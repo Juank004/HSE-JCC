@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RIESGO-CAM // Inspección AR de Locación ESP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+<style>
+  :root{
+    --hazard: #F4C400;
+    --hazard-dim: #8a7000;
+    --ink: #0B0B0C;
+    --steel: #2B2F33;
+    --steel-light: #3F454B;
+    --alert: #E8552D;
+    --ok: #4FA37C;
+    --paper: #EDEDE8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--ink);color:var(--paper);font-family:'IBM Plex Mono',monospace;overflow:hidden;}
+  .hidden{display:none !important;}
+
+  /* ---------- INTRO SCREEN ---------- */
+  #intro{
+    position:fixed;inset:0;z-index:50;
+    background:
+      repeating-linear-gradient(135deg, var(--hazard) 0 18px, var(--ink) 18px 36px) top/100% 10px no-repeat,
+      repeating-linear-gradient(135deg, var(--hazard) 0 18px, var(--ink) 18px 36px) bottom/100% 10px no-repeat,
+      var(--ink);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:34px 22px;text-align:center;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:3px;
+    color:var(--hazard);text-transform:uppercase;margin-bottom:10px;
+  }
+  #intro h1{
+    font-family:'Archivo Black',sans-serif;font-size:clamp(28px,8vw,44px);
+    line-height:0.95;margin:0 0 6px;color:var(--paper);
+  }
+  #intro h1 span{color:var(--hazard);}
+  .subtitle{font-family:'Oswald',sans-serif;font-size:15px;color:#b9bcc0;max-width:360px;margin:0 0 26px;font-weight:400;}
+  .brief{
+    border:1px solid var(--steel-light);background:rgba(255,255,255,0.03);
+    padding:16px 18px;max-width:380px;text-align:left;margin-bottom:26px;
+  }
+  .brief li{font-size:12.5px;line-height:1.7;color:#cfd2d5;}
+  .brief strong{color:var(--hazard);}
+  #marker-link{
+    font-size:11px;color:var(--paper);text-decoration:underline;text-underline-offset:3px;
+    margin-bottom:18px;opacity:0.8;
+  }
+  #start-btn{
+    font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+    background:var(--hazard);color:var(--ink);border:none;padding:16px 40px;font-size:16px;
+    cursor:pointer;clip-path:polygon(0 0,100% 0,94% 100%,6% 100%);
+  }
+  #start-btn:active{transform:translateY(1px);}
+  #cam-warning{font-size:10.5px;color:#8a8f94;margin-top:14px;max-width:300px;}
+
+  /* ---------- AR HUD OVERLAY ---------- */
+  #hud{
+    position:fixed;inset:0;z-index:40;pointer-events:none;
+    display:none;
+  }
+  #hud.active{display:block;}
+  .hud-corner{position:absolute;width:26px;height:26px;border-color:var(--hazard);opacity:0.85;}
+  .hud-corner.tl{top:14px;left:14px;border-top:3px solid var(--hazard);border-left:3px solid var(--hazard);}
+  .hud-corner.tr{top:14px;right:14px;border-top:3px solid var(--hazard);border-right:3px solid var(--hazard);}
+  .hud-corner.bl{bottom:14px;left:14px;border-bottom:3px solid var(--hazard);border-left:3px solid var(--hazard);}
+  .hud-corner.br{bottom:14px;right:14px;border-bottom:3px solid var(--hazard);border-right:3px solid var(--hazard);}
+
+  #topbar{
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);
+    display:flex;gap:10px;align-items:center;
+  }
+  .pill{
+    background:rgba(11,11,12,0.75);border:1px solid var(--steel-light);
+    padding:6px 12px;font-size:11px;letter-spacing:1px;display:flex;gap:8px;align-items:center;
+  }
+  .pill b{color:var(--hazard);font-size:13px;}
+  #timer.warn b{color:var(--alert);}
+
+  #scan-hint{
+    position:absolute;bottom:64px;left:50%;transform:translateX(-50%);
+    font-family:'Oswald',sans-serif;font-size:13px;color:var(--hazard);
+    background:rgba(11,11,12,0.75);padding:8px 16px;border:1px solid var(--hazard-dim);
+    letter-spacing:0.5px;text-align:center;max-width:280px;
+  }
+
+  /* ---------- RISK CARD ---------- */
+  #risk-card{
+    position:fixed;left:0;right:0;bottom:0;z-index:60;
+    background:var(--steel);border-top:4px solid var(--hazard);
+    padding:20px 22px 26px;transform:translateY(110%);transition:transform .32s ease;
+    pointer-events:auto;
+  }
+  #risk-card.show{transform:translateY(0);}
+  .risk-tag{
+    display:inline-block;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:2px;
+    text-transform:uppercase;background:var(--alert);color:var(--ink);padding:3px 10px;margin-bottom:10px;
+  }
+  #risk-card h2{font-family:'Archivo Black',sans-serif;font-size:19px;margin:0 0 8px;color:var(--paper);}
+  #risk-card p{font-size:13px;line-height:1.55;color:#d4d6d8;margin:0 0 6px;}
+  #risk-card .action{font-size:12.5px;color:var(--ok);border-left:3px solid var(--ok);padding-left:10px;margin-top:10px;}
+  #risk-card button{
+    margin-top:16px;width:100%;padding:13px;background:var(--hazard);color:var(--ink);
+    border:none;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:1px;
+    text-transform:uppercase;font-size:13px;cursor:pointer;
+  }
+
+  /* ---------- RESULTS ---------- */
+  #results{
+    position:fixed;inset:0;z-index:70;background:var(--ink);
+    display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;
+  }
+  #results.show{display:flex;}
+  #results .eyebrow{color:var(--ok);}
+  #results h1{font-family:'Archivo Black',sans-serif;font-size:clamp(30px,9vw,50px);margin:6px 0 4px;}
+  #results .score-big{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--hazard);margin-bottom:22px;}
+  #results-list{list-style:none;padding:0;margin:0 0 26px;max-width:380px;width:100%;text-align:left;}
+  #results-list li{font-size:12px;padding:8px 0;border-bottom:1px solid var(--steel-light);display:flex;gap:10px;}
+  #results-list li.found{color:var(--ok);}
+  #results-list li.missed{color:#8a8f94;}
+  #restart-btn{
+    font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+    background:transparent;color:var(--hazard);border:2px solid var(--hazard);padding:13px 34px;font-size:14px;cursor:pointer;
+  }
+
+  .risk-marker{
+    display:flex;align-items:center;justify-content:center;
+    width:34px;height:34px;border-radius:50%;
+    background:var(--alert);color:var(--ink);
+    font-family:'Archivo Black',sans-serif;font-size:20px;
+    box-shadow:0 0 0 4px rgba(232,85,45,0.35);
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= INTRO ================= -->
+<div id="intro">
+  <div class="eyebrow">Baker Hughes · HSE Field Simulation</div>
+  <h1>RIESGO<span>-CAM</span></h1>
+  <div class="subtitle">Inspección de realidad aumentada — localización genérica de bombeo ESP</div>
+  <div class="brief">
+    <li>Apunta la cámara al <strong>marcador HIRO</strong> proyectado en pantalla o impreso.</li>
+    <li>Aparecerá la locación en AR con <strong>7 riesgos ocultos</strong>.</li>
+    <li>Toca cada marcador <strong>⚠</strong> para identificarlo antes de que se acabe el tiempo.</li>
+    <li>Al final verás cuántos riesgos identificó el equipo gerencial.</li>
+  </div>
+  <a id="marker-link" href="https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/HIRO.jpg" target="_blank" rel="noopener">↓ Descargar / proyectar marcador HIRO</a>
+  <button id="start-btn">Iniciar inspección</button>
+  <div id="cam-warning">Requiere permiso de cámara. Usa Chrome (Android) o Safari (iOS) — no funciona dentro de apps embebidas como Instagram/LinkedIn.</div>
+</div>
+
+<!-- ================= HUD ================= -->
+<div id="hud">
+  <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+  <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+  <div id="topbar">
+    <div class="pill">RIESGOS <b id="found-count">0</b>/7</div>
+    <div class="pill" id="timer">TIEMPO <b id="time-left">90</b>s</div>
+  </div>
+  <div id="scan-hint">Apunta al marcador HIRO para revelar la locación</div>
+</div>
+
+<!-- ================= RISK CARD ================= -->
+<div id="risk-card">
+  <div class="risk-tag" id="rc-tag">Riesgo identificado</div>
+  <h2 id="rc-title"></h2>
+  <p id="rc-desc"></p>
+  <p class="action" id="rc-action"></p>
+  <button id="rc-close">Continuar inspección</button>
+</div>
+
+<!-- ================= RESULTS ================= -->
+<div id="results">
+  <div class="eyebrow">Inspección finalizada</div>
+  <h1 id="res-headline">RESULTADO</h1>
+  <div class="score-big" id="res-score">0 / 7 riesgos identificados</div>
+  <ul id="results-list"></ul>
+  <button id="restart-btn">Reiniciar simulación</button>
+</div>
+
+<!-- ================= A-FRAME AR SCENE ================= -->
+<a-scene id="ar-scene" class="hidden" embedded
+  arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix;"
+  vr-mode-ui="enabled: false"
+  renderer="logarithmicDepthBuffer: true;">
+
+  <a-assets></a-assets>
+
+  <a-marker preset="hiro" id="hiro-marker" emitevents="true">
+    <a-entity id="site-root" position="0 0 0">
+
+      <!-- ground / pad -->
+      <a-plane rotation="-90 0 0" width="3.2" height="3.2" color="#4a4d47" opacity="0.9"></a-plane>
+
+      <!-- wellhead stack -->
+      <a-cylinder position="0 0.25 0" radius="0.16" height="0.5" color="#6b6f73"></a-cylinder>
+      <a-cylinder position="0 0.55 0" radius="0.1" height="0.2" color="#8a2f22"></a-cylinder>
+      <a-box position="0 0.7 0" width="0.05" height="0.3" depth="0.05" color="#2c2f31"></a-box>
+
+      <!-- ESP skid / VSD cabinet -->
+      <a-box position="0.8 0.25 -0.3" width="0.4" height="0.5" depth="0.35" color="#3f454b"></a-box>
+      <a-box position="0.8 0.5 -0.12" width="0.36" height="0.02" depth="0.02" color="#F4C400"></a-box>
+
+      <!-- power cable run (visibly crossing walkway) -->
+      <a-box position="0.3 0.02 0.4" width="1.1" height="0.03" depth="0.05" rotation="0 20 0" color="#111"></a-box>
+
+      <!-- pump / motor coupling, unguarded -->
+      <a-cylinder position="-0.7 0.18 0.2" radius="0.08" height="0.5" rotation="0 0 90" color="#5b5f63"></a-cylinder>
+
+      <!-- crane arm for lifting -->
+      <a-box position="-0.9 0.9 -0.6" width="0.04" height="0.04" depth="1.1" rotation="0 0 -18" color="#c9a227"></a-box>
+
+      <!-- fire extinguisher, partly blocked -->
+      <a-cylinder position="1.1 0.15 0.5" radius="0.05" height="0.3" color="#b0281f"></a-cylinder>
+      <a-box position="1.05 0.1 0.62" width="0.3" height="0.2" depth="0.2" color="#7a6a4f"></a-box>
+
+      <!-- pressure gauge -->
+      <a-cylinder position="0.15 0.72 0.05" radius="0.05" height="0.02" rotation="90 0 0" color="#dcdcd6"></a-cylinder>
+
+      <!-- ============ RISK HOTSPOTS ============ -->
+      <a-entity class="hotspot" data-risk="1" position="0 0.62 0.12">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+      <a-entity class="hotspot" data-risk="2" position="0.8 0.62 -0.12">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+      <a-entity class="hotspot" data-risk="3" position="0.3 0.06 0.6">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+      <a-entity class="hotspot" data-risk="4" position="-0.7 0.42 0.2">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+      <a-entity class="hotspot" data-risk="5" position="-1.05 1.05 -0.85">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+      <a-entity class="hotspot" data-risk="6" position="1.05 0.28 0.62">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+      <a-entity class="hotspot" data-risk="7" position="0.15 0.8 0.05">
+        <a-text value="⚠" align="center" color="#0B0B0C" width="1.2" position="0 0 0.03"></a-text>
+        <a-circle radius="0.08" color="#E8552D"></a-circle>
+        <a-animation attribute="scale" dur="900" direction="alternate" repeat="indefinite" to="1.15 1.15 1.15"></a-animation>
+      </a-entity>
+
+    </a-entity>
+  </a-marker>
+
+  <a-entity camera raycaster="objects: .hotspot" cursor="rayOrigin: mouse; fuse: false"></a-entity>
+</a-scene>
+
+<script>
+(function(){
+  const RISKS = {
+    1: {
+      title: "Fuga en sello mecánico del wellhead",
+      desc: "Goteo de fluido de proceso en la conexión superior del wellhead, sin contención secundaria visible.",
+      action: "Acción: aislar, contener con bandeja y reportar como fuga menor antes de escalar a incidente ambiental."
+    },
+    2: {
+      title: "Puerta de VSD sin enclavamiento visible",
+      desc: "Gabinete del variador de frecuencia con panel de acceso sin traba certificada — riesgo de arco eléctrico si se abre energizado.",
+      action: "Acción: verificar LOTO, exigir enclavamiento antes de cualquier intervención eléctrica."
+    },
+    3: {
+      title: "Cable de potencia cruzando zona de tránsito",
+      desc: "Tendido eléctrico a nivel de piso, sin protección mecánica, en ruta de paso de personal.",
+      action: "Acción: reubicar o cubrir con canaleta pasacables; señalizar mientras se corrige."
+    },
+    4: {
+      title: "Acople motor-bomba sin guarda",
+      desc: "Elemento rotativo expuesto entre motor y bomba, sin resguardo físico ni señalización de atrapamiento.",
+      action: "Acción: detener y no operar hasta instalar guarda certificada; bloquear acceso."
+    },
+    5: {
+      title: "Izaje sin radio de exclusión ni señalero",
+      desc: "Maniobra de pluma/grúa sobre el skid sin señalero designado ni delimitación del área bajo carga.",
+      action: "Acción: suspender izaje, definir señalero y radio de exclusión antes de reanudar."
+    },
+    6: {
+      title: "Extintor obstruido",
+      desc: "Equipo contra incendios bloqueado por materiales almacenados, sin acceso en menos de 3 segundos.",
+      action: "Acción: despejar de inmediato y reforzar inspección visual mensual de rutas de acceso."
+    },
+    7: {
+      title: "Manómetro sin certificación visible",
+      desc: "Instrumento de presión sin etiqueta de calibración vigente — dato no confiable para decisiones operativas.",
+      action: "Acción: retirar de servicio hasta verificar calibración; registrar en plan de metrología."
+    }
+  };
+  const TOTAL_TIME = 90;
+  let foundIds = new Set();
+  let timeLeft = TOTAL_TIME;
+  let timerHandle = null;
+  let sceneReady = false;
+
+  const $ = (id) => document.getElementById(id);
+
+  function startExperience(){
+    $('intro').classList.add('hidden');
+    $('hud').classList.add('active');
+    $('ar-scene').classList.remove('hidden');
+    foundIds = new Set();
+    timeLeft = TOTAL_TIME;
+    $('found-count').textContent = '0';
+    $('time-left').textContent = timeLeft;
+    resetHotspots();
+    clearInterval(timerHandle);
+    timerHandle = setInterval(tick, 1000);
+  }
+
+  function resetHotspots(){
+    document.querySelectorAll('.hotspot').forEach(h => h.setAttribute('visible', true));
+  }
+
+  function tick(){
+    timeLeft -= 1;
+    $('time-left').textContent = Math.max(timeLeft,0);
+    if(timeLeft <= 15) $('timer').classList.add('warn');
+    if(timeLeft <= 0){
+      clearInterval(timerHandle);
+      showResults();
+    }
+  }
+
+  function showRiskCard(id){
+    const r = RISKS[id];
+    if(!r) return;
+    $('rc-title').textContent = r.title;
+    $('rc-desc').textContent = r.desc;
+    $('rc-action').textContent = r.action;
+    $('risk-card').classList.add('show');
+  }
+
+  function onHotspotClick(evt){
+    const el = evt.currentTarget;
+    const id = el.getAttribute('data-risk');
+    if(foundIds.has(id)) return;
+    foundIds.add(id);
+    el.setAttribute('visible', false);
+    $('found-count').textContent = foundIds.size;
+    showRiskCard(id);
+    if(foundIds.size >= Object.keys(RISKS).length){
+      clearInterval(timerHandle);
+      setTimeout(showResults, 1200);
+    }
+  }
+
+  function showResults(){
+    $('hud').classList.remove('active');
+    $('ar-scene').classList.add('hidden');
+    $('risk-card').classList.remove('show');
+    const total = Object.keys(RISKS).length;
+    const foundN = foundIds.size;
+    $('res-headline').textContent = foundN === total ? 'INSPECCIÓN COMPLETA' : 'TIEMPO AGOTADO';
+    $('res-score').textContent = foundN + ' / ' + total + ' riesgos identificados';
+    const list = $('results-list');
+    list.innerHTML = '';
+    Object.keys(RISKS).forEach(id => {
+      const li = document.createElement('li');
+      const ok = foundIds.has(id);
+      li.className = ok ? 'found' : 'missed';
+      li.textContent = (ok ? '✔ ' : '— ') + RISKS[id].title;
+      list.appendChild(li);
+    });
+    $('results').classList.add('show');
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    $('start-btn').addEventListener('click', startExperience);
+    $('restart-btn').addEventListener('click', function(){
+      $('results').classList.remove('show');
+      $('intro').classList.remove('hidden');
+    });
+    $('rc-close').addEventListener('click', function(){
+      $('risk-card').classList.remove('show');
+    });
+    document.querySelectorAll('.hotspot').forEach(h => {
+      h.addEventListener('click', onHotspotClick);
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
